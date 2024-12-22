@@ -1,90 +1,178 @@
-import React, { useRef } from 'react';
-import { Animated, StyleSheet, View, TouchableOpacity, Text, Dimensions, ImageBackground } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  FlatList,
+  StyleSheet,
+  Alert,
+  ImageBackground,
+} from 'react-native';
+import SQLite from 'react-native-sqlite-storage';
 
-const { width, height } = Dimensions.get('window');
+const db = SQLite.openDatabase(
+  { name: 'UserDB', location: 'default' },
+  () => console.log('Database connected'),
+  error => console.log('Database error', error)
+);
 
-const App = () => {
-  const bounceValue = useRef(new Animated.Value(0)).current;
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
 
-  const startBounce = () => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(bounceValue, {
-          toValue: -height / 4,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(bounceValue, {
-          toValue: 0,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+export default function App() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [name, setName] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+
+  useEffect(() => {
+    db.transaction(tx => {
+      tx.executeSql(
+        'CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT)',
+        [],
+        () => console.log('Table created successfully'),
+        error => console.log('Create table error', error)
+      );
+    });
+    fetchUsers();
+  }, []);
+
+  
+  const fetchUsers = () => {
+    db.transaction(tx => {
+      tx.executeSql(
+        'SELECT * FROM users',
+        [],
+        (_, results) => {
+          let data: User[] = [];
+          for (let i = 0; i < results.rows.length; i++) {
+            data.push(results.rows.item(i));
+          }
+          setUsers(data);
+        },
+        error => console.log('Fetch users error', error)
+      );
+    });
   };
 
-  const resetBounce = () => {
-    bounceValue.stopAnimation();
-    bounceValue.setValue(0);
+  
+  const addUser = () => {
+    if (!name || !email) {
+      Alert.alert('Error', 'Please fill all fields');
+      return;
+    }
+
+    db.transaction(tx => {
+      tx.executeSql(
+        'INSERT INTO users (name, email) VALUES (?, ?)',
+        [name, email],
+        () => {
+          setName('');
+          setEmail('');
+          fetchUsers();
+          Alert.alert('Success', 'User added successfully');
+        },
+        error => console.log('Add user error', error)
+      );
+    });
+  };
+
+ 
+  const deleteUser = (id: number) => {
+    db.transaction(tx => {
+      tx.executeSql(
+        'DELETE FROM users WHERE id = ?',
+        [id],
+        () => {
+          fetchUsers();
+          Alert.alert('Success', 'User deleted successfully');
+        },
+        error => console.log('Delete user error', error)
+      );
+    });
   };
 
   return (
     <ImageBackground
-      source={{ uri: 'https://i.pinimg.com/474x/24/be/93/24be93a87108744d09c47fe58b520f8f.jpg' }}
-      style={styles.container}
+      source={{ uri: 'https://i.pinimg.com/474x/1d/54/01/1d5401dfeeb3b57612912b2c0c322f53.jpg' }} 
+      style={styles.background}
     >
-      <Animated.View
-        style={[
-          styles.ball,
-          { transform: [{ translateY: bounceValue }] },
-        ]}
-      />
-      <View style={styles.buttonsContainer}>
-        <TouchableOpacity style={styles.button} onPress={startBounce}>
-          <Text style={styles.buttonText}>Start</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, styles.resetButton]} onPress={resetBounce}>
-          <Text style={styles.buttonText}>Reset</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <Text style={styles.title}>MASUKAN ID</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Name"
+          value={name}
+          onChangeText={setName}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <Button title="Add User" onPress={addUser} />
+        <FlatList
+          data={users}
+          keyExtractor={item => item.id.toString()}
+          renderItem={({ item }) => (
+            <View style={styles.user}>
+              <View>
+                <Text style={styles.userText}>{item.name}</Text>
+                <Text>{item.email}</Text>
+              </View>
+              <Button
+                title="Delete"
+                onPress={() => deleteUser(item.id)}
+                color="red"
+              />
+            </View>
+          )}
+        />
       </View>
     </ImageBackground>
   );
-};
+}
 
 const styles = StyleSheet.create({
+  background: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)', 
   },
-  ball: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#ff6f61',
-    borderRadius: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  buttonsContainer: {
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 5,
+    backgroundColor: '#fff', 
+  },
+  user: {
     flexDirection: 'row',
-    marginTop: 30,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderColor: '#ccc',
+    backgroundColor: '#fff',
+    borderRadius: 5,
+    marginBottom: 5,
   },
-  button: {
-    backgroundColor: '#4b6cb7',
-    padding: 15,
-    borderRadius: 10,
-    marginHorizontal: 10,
-  },
-  resetButton: {
-    backgroundColor: '#ff6f61',
-  },
-  buttonText: {
-    color: '#fff',
+  userText: {
+    fontSize: 16,
     fontWeight: 'bold',
   },
 });
-
-export default App;
